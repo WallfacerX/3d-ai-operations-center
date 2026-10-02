@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Canvas, useFrame } from '@react-three/fiber'
-import { Html, OrbitControls } from '@react-three/drei'
+import { Html, OrbitControls, useGLTF, } from '@react-three/drei'
 import { EffectComposer, Bloom } from '@react-three/postprocessing'
 import './App.css'
 
@@ -369,6 +369,25 @@ function RoomDetails({ department }) {
   }
 }
 
+function BlenderDesk({
+  position = [0, 0, 0],
+  rotation = [0, 0, 0],
+  scale = 0.5,
+}) {
+  const { scene } = useGLTF('/models/desk.glb')
+
+  return (
+    <primitive
+      object={scene}
+      position={position}
+      rotation={rotation}
+      scale={scale}
+    />
+  )
+}
+
+useGLTF.preload('/models/desk.glb')
+
 function DepartmentRoom({
   department,
   selected,
@@ -575,6 +594,13 @@ function DepartmentRoom({
       </mesh>
 
       <RoomDetails department={department} />
+
+      {department.id === 'management' && (
+        <BlenderDesk
+          position={[0, 0.15, 0]}
+          scale={0.5}
+        />
+      )}
 
       {/* Room light */}
       <pointLight
