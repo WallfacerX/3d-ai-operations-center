@@ -42,7 +42,7 @@ test('initializes schema and seed once, preserves mutations after reopening', as
   const { db, filename, request } = await setup(t)
   assert.equal(db.pragma('foreign_keys', { simple: true }), 1)
   assert.equal(db.pragma('journal_mode', { simple: true }), 'wal')
-  assert.equal(db.pragma('user_version', { simple: true }), 1)
+  assert.equal(db.pragma('user_version', { simple: true }), 2)
   const workers = (await request('/workers')).body
   assert.equal(workers.length, 1)
   assert.deepEqual({ name: workers[0].name, role: workers[0].role, department: workers[0].department, status: workers[0].status, currentTaskId: workers[0].currentTaskId }, {
@@ -93,7 +93,7 @@ test('manual state updates support every state and preserve timestamp semantics'
   const { request, createTask } = await setup(t)
   const task = await createTask({ assignedWorkerId: 1 })
   let startedAt
-  for (const status of taskStates) {
+  for (const status of taskStates.filter((value) => !['awaiting_review', 'approved', 'completed', 'revision_requested'].includes(value))) {
     const response = await request(`/tasks/${task.id}`, 'PATCH', { status, progress: 37.5 })
     assert.equal(response.status, 200, status)
     assert.equal(response.body.status, status)
@@ -204,7 +204,7 @@ test('activity is limited to newest 100 in stable order', async (t) => {
 test('manual research demo states persist with task/worker links and activity', async (t) => {
   const { request, createTask } = await setup(t)
   const task = await createTask({ assignedWorkerId: 1, type: 'research' })
-  for (const status of ['assigned', 'traveling', 'working', 'awaiting_review']) {
+  for (const status of ['assigned', 'traveling', 'working']) {
     const progress = status === 'awaiting_review' ? 100 : status === 'working' ? 40 : 0
     assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { status, progress })).status, 200)
     assert.equal((await request('/workers/1', 'PATCH', { status, currentTaskId: task.id })).status, 200)
@@ -214,6 +214,7 @@ test('manual research demo states persist with task/worker links and activity', 
     assert.equal(current.status, status)
     assert.equal(current.progress, progress)
   }
+  assert.equal((await request(`/tasks/${task.id}/result`, 'POST', { summary: 'Sample result' })).status, 201)
   const events = (await request('/activity')).body
   assert.ok(events.some((event) => event.event === 'worker_status_changed' && event.message.includes('awaiting_review')))
   assert.ok(events.some((event) => event.event === 'task_status_changed' && event.taskId === task.id))

@@ -1,9 +1,11 @@
 import { Router } from 'express'
-import { ApiError, bodyFields, text, id, state, progress, taskStates, requireRecord } from '../validation.js'
+import reviewApi from './review.js'
+import { ApiError, bodyFields, text, id, state, progress, taskStates, requireRecord, allowManualTaskStatus } from '../validation.js'
 import { recordActivity } from '../db/database.js'
 
 export default function tasksApi(db) {
   const router = Router()
+  router.use(reviewApi(db))
   router.get('/', (_req, res) => res.json(db.prepare('SELECT * FROM tasks ORDER BY id').all()))
   router.get('/:id', (req, res) => res.json(requireRecord(db, 'tasks', id(req.params.id, 'id', { path: true }))))
   router.post('/', (req, res) => {
@@ -16,6 +18,7 @@ export default function tasksApi(db) {
     const type = text(body.type, 'type')
     const workerId = id(body.assignedWorkerId ?? null, 'assignedWorkerId', { nullable: true })
     const status = state(body.status === undefined ? 'draft' : body.status, taskStates)
+    allowManualTaskStatus(status)
     const amount = progress(body.progress === undefined ? 0 : body.progress)
     const task = db.transaction(() => {
       requireRecord(db, 'projects', projectId, 400)
@@ -38,6 +41,9 @@ export default function tasksApi(db) {
     const task = db.transaction(() => {
       const old = requireRecord(db, 'tasks', taskId)
       const status = body.status === undefined ? old.status : state(body.status, taskStates)
+      // Revision progress/assignment edits remain possible without making another decision.
+      if (!(old.status === 'revision_requested' && body.status === undefined)) allowManualTaskStatus(status, old)
+      if (['completed', 'cancelled'].includes(old.status) && db.prepare('SELECT id FROM approvals WHERE taskId=?').get(taskId)) throw new ApiError(409, 'Reviewed terminal tasks cannot be changed')
       const amount = body.progress === undefined ? old.progress : progress(body.progress)
       const workerId = body.assignedWorkerId === undefined ? old.assignedWorkerId : id(body.assignedWorkerId, 'assignedWorkerId', { nullable: true })
       if (workerId !== null) requireRecord(db, 'workers', workerId, 400)

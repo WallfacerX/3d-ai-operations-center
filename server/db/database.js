@@ -14,7 +14,7 @@ export function openDatabase(filename = defaultDatabasePath) {
     db.pragma('busy_timeout = 3000')
     db.transaction(() => {
       const version = db.pragma('user_version', { simple: true })
-      if (version > 1) throw new Error('Database schema is newer than this application supports')
+      if (version > 2) throw new Error('Database schema is newer than this application supports')
       if (version === 0) {
         db.exec(readFileSync(new URL('./schema.sql', import.meta.url), 'utf8'))
         const now = new Date().toISOString()
@@ -23,6 +23,10 @@ export function openDatabase(filename = defaultDatabasePath) {
         db.prepare('INSERT INTO workers (name,role,department,status,createdAt,updatedAt) VALUES (?,?,?,?,?,?)')
           .run('Research Bot 01', 'Technical Research', 'research', 'idle', now, now)
         db.pragma('user_version = 1')
+      }
+      if (version < 2) {
+        db.exec(readFileSync(new URL('./migrations/002-review.sql', import.meta.url), 'utf8'))
+        db.pragma('user_version = 2')
       }
     }).immediate()
     return db

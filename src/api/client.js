@@ -30,3 +30,43 @@ export async function fetchOperations(signal, fetcher = fetch) {
   }))
   return Object.fromEntries(kinds.map((kind, index) => [kind, results[index]]))
 }
+
+async function reviewRequest(path, { method = 'GET', body, signal, missing = false } = {}, fetcher = fetch) {
+  const response = await fetcher(`/api${path}`, { method, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(5000)]) : AbortSignal.timeout(5000), cache: 'no-store', ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) })
+  if (missing && response.status === 404) return null
+  let data
+  try { data = await response.json() } catch { throw new InvalidResponse('Invalid review response') }
+  if (!response.ok) {
+    const error = new Error(typeof data.error === 'string' ? data.error : `Request failed (${response.status})`)
+    error.status = response.status
+    throw error
+  }
+  return data
+}
+function validResult(result) {
+  return result && id(result.id) && id(result.taskId) && id(result.version) && ['summary', 'recommendation', 'reasoning', 'securityConsiderations', 'limitations', 'rawOutput'].every((key) => text(result[key])) && timestamp(result.createdAt) && Array.isArray(result.sources) && result.sources.every((source) => source && text(source.label) && (source.url === undefined || text(source.url)))
+}
+export async function getTaskResult(taskId, { signal, version } = {}, fetcher = fetch) {
+  const result = await reviewRequest(`/tasks/${taskId}/result${version === undefined ? '' : `?version=${version}`}`, { signal, missing: true }, fetcher)
+  if (result !== null && (!validResult(result) || result.taskId !== taskId)) throw new InvalidResponse('Invalid task result')
+  return result
+}
+export async function getTaskApprovals(taskId, signal, fetcher = fetch) {
+  const data = await reviewRequest(`/tasks/${taskId}/approvals`, { signal }, fetcher)
+  if (!Array.isArray(data) || !data.every((r) => id(r.id) && r.taskId === taskId && id(r.resultId) && id(r.resultVersion) && ['approved', 'revision_requested', 'rejected'].includes(r.decision) && text(r.notes) && timestamp(r.createdAt))) throw new InvalidResponse('Invalid approval history')
+  return data
+}
+export async function createTaskResult(taskId, body, signal, fetcher = fetch) {
+  const result = await reviewRequest(`/tasks/${taskId}/result`, { method: 'POST', body, signal }, fetcher)
+  if (!validResult(result) || result.taskId !== taskId) throw new InvalidResponse('Invalid created result')
+  return result
+}
+async function reviewTask(taskId, action, resultId, notes, fetcher) {
+  const data = await reviewRequest(`/tasks/${taskId}/${action}`, { method: 'POST', body: { resultId, notes } }, fetcher)
+  if (data?.task?.id !== taskId || data?.approval?.resultId !== resultId) throw new InvalidResponse('Invalid review decision response')
+  validateRecords('tasks', [data.task])
+  return data
+}
+export const approveTask = (taskId, resultId, notes = '', fetcher = fetch) => reviewTask(taskId, 'approve', resultId, notes, fetcher)
+export const reviseTask = (taskId, resultId, notes, fetcher = fetch) => reviewTask(taskId, 'revise', resultId, notes, fetcher)
+export const rejectTask = (taskId, resultId, notes = '', fetcher = fetch) => reviewTask(taskId, 'reject', resultId, notes, fetcher)

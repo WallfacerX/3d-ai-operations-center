@@ -70,3 +70,17 @@ test('hiding or unmounting aborts even an unresponsive load without an offline u
   assert.equal(h.timers.size, 0)
   assert.equal(h.updates.length, 0)
 })
+
+test('manual refresh invalidates an in-flight read and publishes only fresh data', async () => {
+  const resolvers = []
+  const h = harness(() => new Promise((resolve) => resolvers.push(resolve)))
+  h.stop.refresh()
+  await flush()
+  assert.equal(resolvers.length, 2)
+  resolvers[0]({ stale: true })
+  resolvers[1]({ fresh: true })
+  await flush()
+  assert.equal(h.updates.length, 1)
+  assert.deepEqual(h.updates[0].data, { fresh: true })
+  h.stop()
+})

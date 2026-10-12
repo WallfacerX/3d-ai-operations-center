@@ -1,3 +1,5 @@
+import { useState } from 'react'
+import TaskReviewPanel from './TaskReviewPanel.jsx'
 import { departments, getDepartment } from '../data/facility.js'
 
 function Metric({ label, value }) {
@@ -5,9 +7,12 @@ function Metric({ label, value }) {
 }
 const statusLabel = (status) => status.replaceAll('_', ' ')
 
-export default function TelemetryPanel({ workers, tasks, activity, connection, selection, onSelect }) {
+export default function TelemetryPanel({ workers, tasks, activity, connection, selection, onSelect, refreshKey, onRefresh }) {
+  const [historySelection, setHistorySelection] = useState(null)
   const bot = selection.type === 'bot' ? workers.find(({ id }) => id === selection.id) : null
   const department = !bot ? getDepartment(selection.id) ?? getDepartment('operations') : null
+  const history = bot ? tasks.filter((task) => task.assignedWorkerId === bot.id && ['completed', 'cancelled'].includes(task.status)).sort((a, b) => b.id - a.id) : []
+  const reviewTask = bot?.task ?? (historySelection?.workerId === bot?.id ? history.find((task) => task.id === historySelection.taskId) : null) ?? history[0]
   const working = workers.filter((worker) => worker.status === 'working')
   const associated = department ? workers.filter((worker) => worker.department === department.id) : []
   const recent = [...activity].sort((a, b) => Date.parse(b.timestamp) - Date.parse(a.timestamp) || b.id - a.id).slice(0, 10)
@@ -48,6 +53,8 @@ export default function TelemetryPanel({ workers, tasks, activity, connection, s
           {associated.map((worker) => <button className="associated-worker" type="button" key={worker.id} onClick={() => selectWorker(worker)}>{worker.name} · {statusLabel(worker.status)}</button>)}
         </>}
       </section>
+      {bot && !bot.task && history.length > 0 && <section className="side-section"><div className="side-heading">RECENT TASKS · NOT ACTIVE</div>{history.slice(0, 10).map((task) => <button className="associated-worker" type="button" key={task.id} onClick={() => setHistorySelection({ workerId: bot.id, taskId: task.id })}>{task.title} · {task.status}</button>)}</section>}
+      {bot && reviewTask && <TaskReviewPanel key={reviewTask.id} task={reviewTask} online={connection === 'connected'} refreshKey={refreshKey} onRefresh={onRefresh} />}
       <section className="side-section">
         <div className="side-heading"><span>WORKFORCE</span><span>{working.length} / {workers.length} WORKING</span></div>
         {workers.length === 0 && <p>{connection === 'loading' ? 'Loading workers…' : connection !== 'connected' ? 'Worker data unavailable. Start the backend with npm run server.' : 'No workers registered.'}</p>}

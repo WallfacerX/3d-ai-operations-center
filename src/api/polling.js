@@ -8,6 +8,7 @@ export function startPolling(onUpdate, {
   let stopped = false
   let timer
   let active
+  let refreshRequested = false
   async function poll() {
     if (stopped || visibility.hidden || active) return
     const controller = new AbortController()
@@ -30,7 +31,10 @@ export function startPolling(onUpdate, {
       controller.abort()
       cancel(timeout)
       active = null
-      if (!stopped && !visibility.hidden) timer = schedule(poll, 3000)
+      if (!stopped && !visibility.hidden) {
+        if (refreshRequested) { refreshRequested = false; poll() }
+        else timer = schedule(poll, 3000)
+      }
     }
   }
   function onVisibility() {
@@ -40,10 +44,16 @@ export function startPolling(onUpdate, {
   }
   visibility.addEventListener('visibilitychange', onVisibility)
   poll()
-  return () => {
+  const stop = () => {
     stopped = true
     cancel(timer)
     active?.abort()
     visibility.removeEventListener('visibilitychange', onVisibility)
   }
+  stop.refresh = () => {
+    cancel(timer)
+    if (active) { refreshRequested = true; active.abort() }
+    else poll()
+  }
+  return stop
 }

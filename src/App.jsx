@@ -45,7 +45,7 @@ export default function App() {
           </div>
           <div className="workspace-footer"><span>HOVER ROUTES // TASK-DRIVEN</span><span>MANUAL WORKFLOW · NO AI</span></div>
         </section>
-        <TelemetryPanel workers={workers} tasks={operations.data.tasks} activity={operations.data.activity} connection={operations.status} selection={activeSelection} onSelect={setSelection} />
+        <TelemetryPanel workers={workers} tasks={operations.data.tasks} activity={operations.data.activity} connection={operations.status} refreshKey={operations.updatedAt} onRefresh={operations.refresh} selection={activeSelection} onSelect={setSelection} />
       </section>
       <footer className="bottom-hud">
         <div className="footer-block"><span>WORKERS</span><strong>{workers.length} REGISTERED</strong></div>

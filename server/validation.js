@@ -35,3 +35,30 @@ export function requireRecord(db, table, recordId, status = 404) {
   if (!record) throw new ApiError(status, `${table} record not found`)
   return record
 }
+
+export function resultPayload(body) {
+  const narrative = ['summary', 'recommendation', 'reasoning', 'securityConsiderations', 'limitations', 'rawOutput']
+  bodyFields(body, [...narrative, 'sources'])
+  const result = Object.fromEntries(narrative.map((field) => [field, text(body[field], field, { optional: field !== 'summary', max: 10000 })]))
+  const sources = body.sources === undefined ? [] : body.sources
+  if (!Array.isArray(sources) || sources.length > 20) throw new ApiError(400, 'sources must be an array of at most 20 entries')
+  result.sources = sources.map((source) => {
+    bodyFields(source, ['label', 'url'])
+    const entry = { label: text(source.label, 'source label') }
+    if (source.url !== undefined) {
+      entry.url = text(source.url, 'source URL', { max: 2048 })
+      let url
+      try { url = new URL(entry.url) } catch { throw new ApiError(400, 'Invalid source URL') }
+      if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) throw new ApiError(400, 'Source URL must use HTTP/HTTPS without credentials')
+    }
+    return entry
+  })
+  return result
+}
+
+export function allowManualTaskStatus(status, existing) {
+  if (['approved', 'completed', 'revision_requested', 'awaiting_review'].includes(status)) {
+    throw new ApiError(409, 'Use result submission or explicit review endpoints for this state')
+  }
+  if (existing?.status === 'awaiting_review' || existing?.status === 'approved') throw new ApiError(409, 'Pending review cannot be changed through task PATCH')
+}
