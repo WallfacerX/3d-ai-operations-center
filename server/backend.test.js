@@ -200,3 +200,21 @@ test('activity is limited to newest 100 in stable order', async (t) => {
   assert.equal(events[0].message, '104')
   assert.equal(events.at(-1).message, '5')
 })
+
+test('manual research demo states persist with task/worker links and activity', async (t) => {
+  const { request, createTask } = await setup(t)
+  const task = await createTask({ assignedWorkerId: 1, type: 'research' })
+  for (const status of ['assigned', 'traveling', 'working', 'awaiting_review']) {
+    const progress = status === 'awaiting_review' ? 100 : status === 'working' ? 40 : 0
+    assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { status, progress })).status, 200)
+    assert.equal((await request('/workers/1', 'PATCH', { status, currentTaskId: task.id })).status, 200)
+    const worker = (await request('/workers')).body[0]
+    const current = (await request('/tasks')).body.find((item) => item.id === worker.currentTaskId)
+    assert.equal(worker.status, status)
+    assert.equal(current.status, status)
+    assert.equal(current.progress, progress)
+  }
+  const events = (await request('/activity')).body
+  assert.ok(events.some((event) => event.event === 'worker_status_changed' && event.message.includes('awaiting_review')))
+  assert.ok(events.some((event) => event.event === 'task_status_changed' && event.taskId === task.id))
+})

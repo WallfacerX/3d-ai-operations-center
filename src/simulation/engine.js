@@ -1,4 +1,5 @@
-import { connections, departments, getDepartment } from '../data/facility.js'
+import { findRoute } from '../scene/workerMotion.js'
+import { departments, getDepartment } from '../data/facility.js'
 import { taskCatalog, workers } from '../data/workflows.js'
 
 export const TRAVEL_SPEED = 2.4
@@ -12,30 +13,7 @@ const distance = (a, b) => {
   return Math.hypot(p[0] - q[0], p[2] - q[2])
 }
 
-// Dijkstra over the visible links: workers never teleport or invent a connection.
-export function findRoute(from, to) {
-  const costs = Object.fromEntries(departments.map(({ id }) => [id, Infinity]))
-  const previous = {}
-  const pending = new Set(departments.map(({ id }) => id))
-  costs[from] = 0
-  while (pending.size) {
-    const current = [...pending].reduce((a, b) => costs[a] <= costs[b] ? a : b)
-    if (costs[current] === Infinity) break
-    if (current === to) {
-      const path = [to]
-      while (path[0] !== from) path.unshift(previous[path[0]])
-      return path
-    }
-    pending.delete(current)
-    for (const [a, b] of connections) {
-      const next = a === current ? b : b === current ? a : null
-      if (!pending.has(next)) continue
-      const cost = costs[current] + distance(current, next)
-      if (cost < costs[next]) { costs[next] = cost; previous[next] = current }
-    }
-  }
-  throw new Error(`No route from ${from} to ${to}`)
-}
+export { findRoute } from '../scene/workerMotion.js'
 
 export function createSimulation() {
   return {

@@ -8,8 +8,9 @@
     "build": "vite build",
     "lint": "oxlint",
     "preview": "vite preview",
-    "test": "node --test src/simulation/*.test.js server/*.test.js",
-    "server": "node server/index.js"
+    "test": "node --test src/simulation/*.test.js src/api/*.test.js src/data/*.test.js src/scene/*.test.js server/*.test.js",
+    "server": "node server/index.js",
+    "demo": "node scripts/demo.js"
   },
   "dependencies": {
     "@react-three/drei": "^10.7.9",

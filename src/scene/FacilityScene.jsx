@@ -19,7 +19,8 @@ function CameraReset({ version }) {
 export default function FacilityScene({
   selected,
   onSelect,
-  simulation,
+  workers,
+  online,
   selectedBot,
   onSelectBot,
   cameraVersion,
@@ -114,12 +115,12 @@ export default function FacilityScene({
         )
       )}
 
-      {/* Automated task bots */}
-      {simulation.bots.map((bot) => (
+      {/* Backend workers; movement is presentation only. */}
+      {workers.map((bot) => (
         <TaskBot
           key={bot.id}
           bot={bot}
-          elapsed={simulation.elapsed}
+          online={online}
           selected={selectedBot === bot.id}
           onSelect={onSelectBot}
         />
@@ -131,7 +132,7 @@ export default function FacilityScene({
           <DepartmentRoom
             key={department.id}
             department={department}
-            working={simulation.bots.filter((bot) => bot.status === 'working' && bot.currentDepartment === department.id).length}
+            working={workers.filter((bot) => bot.status === 'working' && bot.destination === department.id).length}
             selected={
               selected ===
               department.id

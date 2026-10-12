@@ -1,23 +1,22 @@
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useFrame } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
-import { writeBotPosition } from '../simulation/engine.js'
+import { createMotion, updateMotion, advanceMotion } from './workerMotion.js'
 
-export default function TaskBot({ bot, elapsed, selected, onSelect }) {
+export default function TaskBot({ bot, online, selected, onSelect }) {
   const group = useRef()
   const ring = useRef()
-  const target = useRef({ x: 0, y: 2, z: 0 })
-  const initialized = useRef(false)
-  const color = bot.status === 'completed' ? '#ffffff' : bot.status === 'idle' ? '#8baba0' : bot.color
+  const motion = useRef(null)
+  const color = bot.status === 'awaiting_review' ? '#ffbd59' : bot.status === 'error' ? '#ff3853' : bot.status === 'idle' ? '#8baba0' : bot.color
+  useEffect(() => {
+    if (!motion.current) motion.current = createMotion(bot)
+    if (online) updateMotion(motion.current, bot)
+  }, [bot, online])
   useFrame((_, delta) => {
-    writeBotPosition(bot, target.current)
-    const { x, y, z } = target.current
-    const position = group.current.position
-    if (!initialized.current) { position.set(x, y, z); initialized.current = true }
-    const blend = 1 - Math.exp(-delta * 24)
-    position.x += (x - position.x) * blend
-    position.z += (z - position.z) * blend
-    position.y = y + Math.sin(elapsed * 3 + bot.id.charCodeAt(5)) * 0.06
+    if (!motion.current) return
+    const position = advanceMotion(motion.current, delta, online)
+    const elapsed = motion.current.elapsed
+    group.current.position.set(position.x, position.y + Math.sin(elapsed * 3 + bot.id) * 0.06, position.z)
     ring.current.rotation.z = bot.status === 'working' ? elapsed * 2 : 0
     ring.current.scale.setScalar(selected ? 1.35 : 1)
   })
@@ -32,11 +31,11 @@ export default function TaskBot({ bot, elapsed, selected, onSelect }) {
         <torusGeometry args={[0.37, 0.035, 8, 24, bot.status === 'working' ? Math.PI * 1.6 : Math.PI * 2]} />
         <meshStandardMaterial color={color} emissive={color} emissiveIntensity={1.4} />
       </mesh>
-      {(selected || bot.status === 'traveling') && <Html position={[0, 0.65, 0]} center zIndexRange={[40, 31]}>
+      <Html position={[0, 0.65, 0]} center zIndexRange={[40, 31]}>
         <button type="button" className={`bot-label ${selected ? 'is-selected' : ''}`} style={{ '--bot-color': color }} onClick={select} aria-pressed={selected}>
-          <strong>{bot.name}</strong><span>{bot.status}</span>
+          <strong>{bot.name}</strong><span>{bot.status.replaceAll('_', ' ')}</span>
         </button>
-      </Html>}
+      </Html>
     </group>
   )
 }

@@ -789,3 +789,10 @@ progress { width: 100%; height: 8px; margin-top: 8px; accent-color: #20ff68; }
   .footer-block strong { font-size: 9px; }
   .build-number { padding-left: 8px; }
 }
+
+.connection-status, .refresh-time { padding: 8px; background: #071b12ee; color: #b9d2c2; font-size: 10px; }
+.connection-offline, .connection-invalid, .status-error { color: #ff8d9c; }
+.status-awaiting_review, .side-section .review-notice { color: #ffbd59; }
+.associated-worker { display: block; width: 100%; padding: 8px; color: #b5d8c1; background: #06150d; border: 1px solid #254c33; text-align: left; font-size: 11px; }
+.details dd, .side-section h1, .worker-list button { overflow-wrap: anywhere; }
+.bot-label { max-width: 160px; }
