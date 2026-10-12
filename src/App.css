@@ -718,3 +718,74 @@ button {
       280px;
   }
 }
+/* Readable controls and live simulation state within the original HUD. */
+.brand-subtitle, .top-status, .workspace-footer, .build-number { color: #8bb99a; }
+.brand-subtitle { font-size: 10px; }
+.top-status, .network-header { font-size: 11px; }
+.side-heading { font-size: 10px; color: #9dbea7; letter-spacing: 0.8px; }
+.selected-status { font-size: 11px; color: #9effbc; }
+.side-section p { font-size: 12px; color: #b2c8b9; }
+.metric span { font-size: 9px; color: #9cbea7; }
+.metric strong { font-size: 17px; }
+.footer-block span { font-size: 9px; color: #93b49d; }
+.footer-block strong { font-size: 11px; }
+.workspace-footer, .build-number { font-size: 9px; }
+.control-help span { font-size: 9px; color: #a3bbaa; }
+.room-label { pointer-events: auto; cursor: pointer; min-width: 108px; box-shadow: none; }
+.room-label-selected { background: #152d21; outline: 1px solid var(--room-color); }
+.room-code, .room-label span { font-size: 9px; }
+.room-label strong { font-size: 10px; letter-spacing: 0.4px; }
+.room-label span { color: #b4c9bb; }
+.bot-label { display: grid; gap: 3px; padding: 5px 8px; border: 1px solid var(--bot-color); color: var(--bot-color); background: #041009f2; cursor: pointer; font-size: 10px; min-width: 74px; }
+.bot-label span { color: #c5d5cd; font-size: 9px; text-transform: uppercase; }
+.bot-label.is-selected { outline: 2px solid #e1ffed; outline-offset: 2px; }
+.scene-toolbar { position: absolute; z-index: 50; top: 12px; left: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+.scene-toolbar button, .scene-toolbar label, .reset-prompt button, .scene-message button { color: #ceebd8; background: #071b12ee; border: 1px solid #34754c; padding: 8px 10px; font-size: 11px; }
+.scene-toolbar select { background: #071b12; color: #ceebd8; font: inherit; border: 0; }
+button { cursor: pointer; }
+button:hover { filter: brightness(1.2); }
+.details { font-size: 12px; line-height: 1.6; }
+.details dt { color: #91b29c; margin-top: 10px; font-size: 10px; text-transform: uppercase; }
+.details dd { margin: 0; color: #e0f0e5; }
+.progress-label { display: flex; justify-content: space-between; font-size: 11px; color: #b7d0c0; }
+progress { width: 100%; height: 8px; margin-top: 8px; accent-color: #20ff68; }
+.result { border-left: 2px solid #34754c; padding-left: 10px; margin-top: 14px; }
+.result > span { font-size: 9px; color: #93b49d; }
+.result p { margin: 6px 0 0; }
+.worker-list { display: grid; gap: 6px; }
+.worker-list button { background: #06150d; border: 1px solid #254c33; color: #c4e4ce; text-align: left; padding: 10px; font-size: 12px; }
+.worker-list button[aria-pressed=true], .department-list button[aria-pressed=true] { border-color: #6aff98; background: #133320; }
+.worker-list button > span:first-child { display: flex; align-items: center; gap: 7px; }
+.worker-list i { width: 7px; height: 7px; border-radius: 50%; }
+.worker-list small { margin-left: auto; text-transform: uppercase; font-size: 9px; }
+.worker-task { display: block; color: #9cb7a6; font-size: 10px; margin-top: 6px; }
+.department-list { display: flex; gap: 6px; flex-wrap: wrap; }
+.department-list button { font-size: 10px; padding: 7px; color: #b5d8c1; background: #06150d; border: 1px solid #254c33; }
+.activity-log { padding: 0; margin: 0; list-style: none; font-size: 11px; line-height: 1.5; }
+.activity-log li { padding: 8px 0; border-bottom: 1px solid #163723; }
+.activity-log time { color: #8fae9b; }
+.activity-log strong { color: #a8e7bb; }
+.activity-log span { display: block; color: #adc4b6; margin-top: 3px; }
+.scene-message, .loading { padding: 20px; color: #d0edda; background: #071b12; font-size: 13px; }
+.reset-prompt { position: absolute; z-index: 60; top: 60px; left: 12px; right: 12px; max-width: 350px; padding: 16px; background: #0a1d12; border: 1px solid #6aff98; font-size: 12px; }
+.reset-prompt button { margin-right: 6px; }
+.status-completed { color: #fff; }
+@media (max-width: 760px) {
+  html, body, #root { height: auto; min-height: 100%; overflow: auto; }
+  .command-center { width: 100%; height: auto; min-height: 100dvh; grid-template-rows: auto 1fr auto; overflow: visible; }
+  .top-hud { padding: 14px 10px; gap: 12px; flex-wrap: wrap; }
+  .brand-title { font-size: 12px; letter-spacing: 0.5px; }
+  .brand-subtitle { font-size: 9px; }
+  .brand-mark { width: 32px; height: 32px; flex-shrink: 0; }
+  .main-layout { grid-template-columns: 1fr; }
+  .network-panel { height: 62dvh; min-height: 420px; }
+  .telemetry-panel { overflow: visible; }
+  .network-header { padding: 0 8px; font-size: 9px; }
+  .workspace-footer { font-size: 8px; }
+  .control-help { flex-wrap: wrap; bottom: 8px; gap: 4px; }
+  .control-help span { font-size: 8px; }
+  .bottom-hud { flex-wrap: wrap; padding: 8px 0; gap: 8px; }
+  .footer-block { min-width: 100px; padding: 0 8px; }
+  .footer-block strong { font-size: 9px; }
+  .build-number { padding-left: 8px; }
+}
