@@ -30,7 +30,7 @@ async function run() {
   }
   if (!task) {
     if (!['setup', 'new'].includes(step)) throw new Error('Run npm run demo -- setup first.')
-    task = await request('/tasks', 'POST', { projectId: project.id, title, description: marker, requirements: 'Inspect the 3D worker, task progress, and activity feed.', type: 'research', assignedWorkerId: worker.id })
+    task = await request('/tasks', 'POST', { projectId: project.id, title, description: marker, requirements: 'Inspect the 3D worker, task progress, and activity feed.', type: 'research' })
   }
   if (['setup', 'new'].includes(step)) { console.log(`Demo task #${task.id} ready; worker #${worker.id}. Run idle, assigned, traveling, working, then result; make the decision in the HUD. Setup did not advance worker state.`); return }
   if (['result', 'review'].includes(step)) {
@@ -49,12 +49,10 @@ async function run() {
   }
   if (['awaiting_review', 'completed', 'cancelled'].includes(task.status)) throw new Error('Use the HUD to decide pending review, or run new after a terminal decision. History is preserved.')
   if (step === 'idle') {
-    await request(`/workers/${worker.id}`, 'PATCH', { status: 'idle', currentTaskId: null })
-    await request(`/tasks/${task.id}`, 'PATCH', { status: 'draft', progress: 0, assignedWorkerId: worker.id })
+    if (task.status !== 'draft' || worker.currentTaskId !== null) throw new Error('Idle is only available before assignment; cancel/finish active work in the UI.')
   } else {
-    const status = step === 'review' ? 'awaiting_review' : step
-    await request(`/tasks/${task.id}`, 'PATCH', { status, progress: step === 'review' ? 100 : step === 'working' ? 40 : 0, assignedWorkerId: worker.id })
-    await request(`/workers/${worker.id}`, 'PATCH', { status, currentTaskId: task.id })
+    const action = { assigned: 'assign', traveling: 'start', working: task.status === 'revision_requested' ? 'resume' : 'begin-work' }[step]
+    await request(`/tasks/${task.id}/${action}`, 'POST', action === 'assign' ? { workerId: worker.id } : {})
   }
   console.log(`Worker #${worker.id}, task #${task.id}: ${step}. Allow a polling cycle (about 3 seconds) to see the change. Travel normally takes another 3–4 seconds.`)
 }

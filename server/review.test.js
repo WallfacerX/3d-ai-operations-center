@@ -17,8 +17,8 @@ async function setup(t) {
     const response = await fetch(`http://127.0.0.1:${server.address().port}/api${path}`, { method, ...(body === undefined ? {} : { headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }) })
     return { status: response.status, body: await response.json() }
   }
-  const task = (await request('/tasks', 'POST', { projectId: 1, title: 'Review test', type: 'research', assignedWorkerId: 1, status: 'working' })).body
-  await request('/workers/1', 'PATCH', { currentTaskId: task.id, status: 'working' })
+  const task = (await request('/tasks', 'POST', { projectId: 1, title: 'Review test', type: 'research' })).body
+  for (const action of ['assign', 'start', 'begin-work']) assert.equal((await request(`/tasks/${task.id}/${action}`, 'POST', action === 'assign' ? { workerId: 1 } : {})).status, 200)
   const path = `/tasks/${task.id}`
   const submit = (body = { summary: 'Sample comparison', sources: [{ label: 'Demo source', url: 'https://example.invalid/demo' }] }) => request(`${path}/result`, 'POST', body)
   return { db, request, task, path, submit }
@@ -107,17 +107,19 @@ test('manual APIs cannot bypass review; malformed actions and absent results fai
   assert.equal((await request(`${path}/approve`, 'POST', { resultId: 1 })).status, 409)
   const result = (await submit()).body // legacy awaiting_review without a result
   for (const body of [{}, { resultId: '1' }, { resultId: result.id, status: 'completed' }, { resultId: result.id, notes: 'x'.repeat(2001) }]) assert.equal((await request(`${path}/approve`, 'POST', body)).status, 400)
-  for (const body of [{ status: 'working' }, { progress: 0 }, { assignedWorkerId: null }]) assert.equal((await request(path, 'PATCH', body)).status, 409)
+  for (const body of [{ status: 'working' }, { progress: 0 }]) assert.equal((await request(path, 'PATCH', body)).status, 409)
   await request(`${path}/reject`, 'POST', { resultId: result.id })
   assert.equal((await request(path, 'PATCH', { status: 'draft' })).status, 409)
 })
 
 test('unrelated worker assignment is untouched by review', async (t) => {
-  const { request, path, submit } = await setup(t)
+  const { request, path, submit, db } = await setup(t)
   const result = (await submit()).body
-  await request('/workers/1', 'PATCH', { status: 'idle', currentTaskId: null })
-  const other = (await request('/tasks', 'POST', { projectId: 1, title: 'Other', type: 'research', assignedWorkerId: 1 })).body
-  await request('/workers/1', 'PATCH', { status: 'working', currentTaskId: other.id })
+  // Simulate a legacy inconsistent association without permitting it through the API.
+  db.exec("UPDATE workers SET status='idle',currentTaskId=NULL WHERE id=1")
+  const other = (await request('/tasks', 'POST', { projectId: 1, title: 'Other', type: 'research' })).body
+  db.prepare("UPDATE tasks SET assignedWorkerId=1 WHERE id=?").run(other.id)
+  db.prepare("UPDATE workers SET status='working',currentTaskId=? WHERE id=1").run(other.id)
   assert.equal((await request(`${path}/approve`, 'POST', { resultId: result.id })).status, 200)
   const worker = (await request('/workers/1')).body
   assert.equal(worker.currentTaskId, other.id)

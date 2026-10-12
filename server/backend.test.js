@@ -7,7 +7,6 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createApp } from './app.js'
 import { openDatabase } from './db/database.js'
-import { taskStates, workerStates } from './validation.js'
 
 async function setup(t) {
   const dir = mkdtempSync(join(tmpdir(), 'magnium-api-'))
@@ -50,13 +49,13 @@ test('initializes schema and seed once, preserves mutations after reopening', as
   })
   assert.equal((await request('/projects')).body[0].name, 'Internal Prototype')
   assert.deepEqual((await request('/workers/1')).body, workers[0])
-  assert.equal((await request('/workers/1', 'PATCH', { status: 'assigned' })).status, 200)
+  assert.equal((await request('/workers/1', 'PATCH', { status: 'error' })).status, 200)
   db.close()
   const reopened = openDatabase(filename)
   try {
     assert.equal(reopened.prepare('SELECT count(*) AS count FROM workers').get().count, 1)
     assert.equal(reopened.prepare('SELECT count(*) AS count FROM projects').get().count, 1)
-    assert.equal(reopened.prepare('SELECT status FROM workers WHERE id=1').get().status, 'assigned')
+    assert.equal(reopened.prepare('SELECT status FROM workers WHERE id=1').get().status, 'error')
     assert.equal(reopened.prepare('SELECT count(*) AS count FROM activity').get().count, 1)
   } finally { reopened.close() }
 })
@@ -73,62 +72,47 @@ test('health, project/task creation and reading, defaults and activity reference
   assert.equal(project.body.createdAt, project.body.updatedAt)
   assert.deepEqual((await request(`/projects/${project.body.id}`)).body, project.body)
   assert.equal((await request('/projects')).body.length, 2)
-  const task = await request('/tasks', 'POST', { projectId: project.body.id, title: 'Check constraints', type: 'research', assignedWorkerId: 1 })
+  const task = await request('/tasks', 'POST', { projectId: project.body.id, title: 'Check constraints', type: 'research' })
   assert.equal(task.status, 201)
   assert.equal(task.body.status, 'draft')
   assert.equal(task.body.progress, 0)
   assert.equal(task.body.requirements, '')
   assert.equal(task.body.startedAt, null)
   assert.equal(task.body.completedAt, null)
-  assert.deepEqual((await request(`/tasks/${task.body.id}`)).body, task.body)
-  assert.deepEqual((await request('/tasks')).body, [task.body])
+  assert.deepEqual((await request(`/tasks/${task.body.id}`)).body, { ...task.body, latestResult: null, latestRevision: null })
+  assert.deepEqual((await request('/tasks')).body, [{ ...task.body, latestResult: null, latestRevision: null }])
   const events = (await request('/activity')).body
-  assert.deepEqual(events.map((event) => event.event), ['task_assigned', 'task_created', 'project_created'])
+  assert.deepEqual(events.map((event) => event.event), ['task_created', 'project_created'])
   assert.ok(events.every((event) => event.projectId === project.body.id))
   assert.equal(events[0].taskId, task.body.id)
-  assert.equal(events[0].workerId, 1)
+  assert.equal(events[0].workerId, null)
 })
 
-test('manual state updates support every state and preserve timestamp semantics', async (t) => {
-  const { request, createTask } = await setup(t)
-  const task = await createTask({ assignedWorkerId: 1 })
-  let startedAt
-  for (const status of taskStates.filter((value) => !['awaiting_review', 'approved', 'completed', 'revision_requested'].includes(value))) {
-    const response = await request(`/tasks/${task.id}`, 'PATCH', { status, progress: 37.5 })
-    assert.equal(response.status, 200, status)
-    assert.equal(response.body.status, status)
-    if (status === 'working') { startedAt = response.body.startedAt; assert.ok(startedAt) }
-    assert.equal(response.body.completedAt !== null, status === 'completed')
-  }
-  const repeatedWork = await request(`/tasks/${task.id}`, 'PATCH', { status: 'working' })
-  assert.equal(repeatedWork.body.startedAt, startedAt)
-  for (const status of workerStates) {
-    const response = await request('/workers/1', 'PATCH', { status, currentTaskId: task.id })
-    assert.equal(response.status, 200, status)
-    assert.equal(response.body.status, status)
-    assert.equal(response.body.currentTaskId, task.id)
-  }
-  const count = (await request('/activity')).body.length
-  const before = (await request('/workers/1')).body
-  await request('/workers/1', 'PATCH', { status: 'error', currentTaskId: task.id })
-  await request(`/tasks/${task.id}`, 'PATCH', { status: 'working', progress: 37.5 })
-  assert.equal((await request('/activity')).body.length, count)
-  assert.deepEqual((await request('/workers/1')).body, before)
-  assert.ok((await request('/activity')).body.some((event) => event.event === 'worker_status_changed'))
-})
-
-test('assignment conflicts require clearing worker link and do not partially mutate', async (t) => {
+test('validated PATCH delegates transitions and preserves timestamp semantics', async (t) => {
   const { request, createTask } = await setup(t)
   const task = await createTask()
-  assert.equal((await request('/workers/1', 'PATCH', { currentTaskId: task.id })).status, 400)
   assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { assignedWorkerId: 1 })).status, 200)
-  assert.equal((await request('/workers/1', 'PATCH', { currentTaskId: task.id, status: 'working' })).status, 200)
+  for (const status of ['traveling', 'working']) assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { status })).status, 200)
+  const before = (await request(`/tasks/${task.id}`)).body
+  assert.ok(before.startedAt)
+  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { progress: 37.5 })).status, 200)
   const count = (await request('/activity')).body.length
-  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { assignedWorkerId: null, status: 'completed' })).status, 409)
-  assert.equal((await request(`/tasks/${task.id}`)).body.status, 'draft')
+  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { progress: 37.5 })).status, 200)
   assert.equal((await request('/activity')).body.length, count)
-  await request('/workers/1', 'PATCH', { currentTaskId: null, status: 'idle' })
-  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { assignedWorkerId: null })).status, 200)
+  assert.equal((await request(`/tasks/${task.id}`)).body.startedAt, before.startedAt)
+  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { status: 'draft' })).status, 409)
+})
+
+test('assignment and worker overrides cannot partially mutate linked work', async (t) => {
+  const { request, createTask } = await setup(t)
+  const task = await createTask()
+  assert.equal((await request('/workers/1', 'PATCH', { currentTaskId: task.id })).status, 409)
+  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { assignedWorkerId: 1 })).status, 200)
+  const count = (await request('/activity')).body.length
+  assert.equal((await request('/workers/1', 'PATCH', { currentTaskId: null, status: 'idle' })).status, 409)
+  assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { assignedWorkerId: null, status: 'completed' })).status, 400)
+  assert.equal((await request(`/tasks/${task.id}`)).body.status, 'assigned')
+  assert.equal((await request('/activity')).body.length, count)
 })
 
 test('rejects invalid fields, identifiers, references, states and progress', async (t) => {
@@ -138,7 +122,7 @@ test('rejects invalid fields, identifiers, references, states and progress', asy
     assert.equal((await request('/projects', 'POST', body)).status, 400, JSON.stringify(body))
   }
   const valid = { projectId: 1, title: 'x', type: 'research' }
-  for (const extra of [{ projectId: '1' }, { projectId: 0 }, { projectId: 999 }, { projectId: 1.5 }, { title: null }, { type: '' }, { requirements: [] }, { description: 'x'.repeat(10001) }, { status: 'running' }, { status: null }, { progress: -1 }, { progress: 101 }, { progress: '50' }, { progress: null }, { assignedWorkerId: 999 }, { assignedWorkerId: '1' }, { createdAt: 'yesterday' }]) {
+  for (const extra of [{ projectId: '1' }, { projectId: 0 }, { projectId: 999 }, { projectId: 1.5 }, { title: null }, { title: '   ' }, { type: '' }, { requirements: [] }, { description: 'x'.repeat(10001) }, { status: 'running' }, { status: null }, { progress: -1 }, { progress: 101 }, { progress: '50' }, { progress: null }, { assignedWorkerId: 999 }, { assignedWorkerId: '1' }, { createdAt: 'yesterday' }]) {
     assert.equal((await request('/tasks', 'POST', { ...valid, ...extra })).status, 400)
   }
   for (const body of [{}, { status: 'unknown' }, { progress: false }, { assignedWorkerId: -1 }, { projectId: 1 }]) assert.equal((await request(`/tasks/${task.id}`, 'PATCH', body)).status, 400)
@@ -201,21 +185,19 @@ test('activity is limited to newest 100 in stable order', async (t) => {
   assert.equal(events.at(-1).message, '5')
 })
 
-test('manual research demo states persist with task/worker links and activity', async (t) => {
+test('manual research demo actions persist with task/worker links and activity', async (t) => {
   const { request, createTask } = await setup(t)
-  const task = await createTask({ assignedWorkerId: 1, type: 'research' })
-  for (const status of ['assigned', 'traveling', 'working']) {
-    const progress = status === 'awaiting_review' ? 100 : status === 'working' ? 40 : 0
-    assert.equal((await request(`/tasks/${task.id}`, 'PATCH', { status, progress })).status, 200)
-    assert.equal((await request('/workers/1', 'PATCH', { status, currentTaskId: task.id })).status, 200)
+  const task = await createTask({ type: 'research' })
+  for (const [action, status] of [['assign', 'assigned'], ['start', 'traveling'], ['begin-work', 'working']]) {
+    assert.equal((await request(`/tasks/${task.id}/${action}`, 'POST', action === 'assign' ? { workerId: 1 } : {})).status, 200)
     const worker = (await request('/workers')).body[0]
     const current = (await request('/tasks')).body.find((item) => item.id === worker.currentTaskId)
     assert.equal(worker.status, status)
     assert.equal(current.status, status)
-    assert.equal(current.progress, progress)
   }
   assert.equal((await request(`/tasks/${task.id}/result`, 'POST', { summary: 'Sample result' })).status, 201)
+  assert.equal((await request('/tasks')).body[0].latestResult.summary, 'Sample result')
   const events = (await request('/activity')).body
   assert.ok(events.some((event) => event.event === 'worker_status_changed' && event.message.includes('awaiting_review')))
-  assert.ok(events.some((event) => event.event === 'task_status_changed' && event.taskId === task.id))
+  assert.ok(events.some((event) => event.event === 'task_started'))
 })

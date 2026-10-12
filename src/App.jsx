@@ -1,9 +1,10 @@
-import { lazy, Suspense, useMemo, useState } from 'react'
+import { lazy, Suspense, useMemo, useRef, useState } from 'react'
 import { Canvas } from '@react-three/fiber'
 import { Html } from '@react-three/drei'
 import useOperations from './hooks/useOperations.js'
 import { mapWorkers } from './data/workerScene.js'
 import TelemetryPanel from './ui/TelemetryPanel.jsx'
+import OperationsPanel from './ui/OperationsPanel.jsx'
 import SceneBoundary from './ui/SceneBoundary.jsx'
 import './App.css'
 
@@ -14,6 +15,11 @@ export default function App() {
   const workers = useMemo(() => mapWorkers(operations.data.workers, operations.data.tasks), [operations.data.workers, operations.data.tasks])
   const online = operations.status === 'connected'
   const [selection, setSelection] = useState({ type: 'department', id: 'operations' })
+  const sidebar = useRef(null)
+  const [panel, setPanel] = useState('operations')
+  const [pendingTask, setPendingTask] = useState(null)
+  const select = (value) => { setSelection(value); setPanel('inspector'); if (sidebar.current) sidebar.current.scrollTop = 0 }
+  const selectTask = (task) => { setPendingTask(task); select({ type: 'task', id: task.id }) }
   const [cameraVersion, setCameraVersion] = useState(0)
   const activeSelection = selection.type === 'bot' && !workers.some((worker) => worker.id === selection.id)
     ? { type: 'department', id: 'operations' } : selection
@@ -32,7 +38,7 @@ export default function App() {
             <SceneBoundary>
               <Canvas shadows dpr={[1, 1.5]} camera={{ position: [16, 17, 18], fov: 45, near: 0.1, far: 100 }} fallback={<div className="scene-message">WebGL is unavailable. Use the inspector to explore the simulation.</div>}>
                 <Suspense fallback={<Html center><div className="loading">Loading facility…</div></Html>}>
-                  <FacilityScene workers={workers} online={online} selected={activeSelection.type === 'department' ? activeSelection.id : null} selectedBot={activeSelection.type === 'bot' ? activeSelection.id : null} onSelect={(id) => setSelection({ type: 'department', id })} onSelectBot={(id) => setSelection({ type: 'bot', id })} cameraVersion={cameraVersion} />
+                  <FacilityScene workers={workers} online={online} selected={activeSelection.type === 'department' ? activeSelection.id : null} selectedBot={activeSelection.type === 'bot' ? activeSelection.id : activeSelection.type === 'task' ? workers.find((worker) => worker.currentTaskId === activeSelection.id)?.id : null} onSelect={(id) => select({ type: 'department', id })} onSelectBot={(id) => select({ type: 'bot', id })} cameraVersion={cameraVersion} />
                 </Suspense>
               </Canvas>
             </SceneBoundary>
@@ -45,7 +51,11 @@ export default function App() {
           </div>
           <div className="workspace-footer"><span>HOVER ROUTES // TASK-DRIVEN</span><span>MANUAL WORKFLOW · NO AI</span></div>
         </section>
-        <TelemetryPanel workers={workers} tasks={operations.data.tasks} activity={operations.data.activity} connection={operations.status} refreshKey={operations.updatedAt} onRefresh={operations.refresh} selection={activeSelection} onSelect={setSelection} />
+        <aside className="operator-sidebar" ref={sidebar}>
+          <nav aria-label="Console panels"><button aria-pressed={panel === 'operations'} onClick={() => setPanel('operations')}>Operations</button><button aria-pressed={panel === 'inspector'} onClick={() => setPanel('inspector')}>Inspector</button></nav>
+          <div hidden={panel !== 'operations'}><OperationsPanel data={operations.data} online={online} refresh={operations.refresh} onSelectTask={selectTask} /></div>
+          <div hidden={panel !== 'inspector'}><TelemetryPanel workers={workers} tasks={operations.data.tasks} pendingTask={pendingTask} activity={operations.data.activity} connection={operations.status} refreshKey={operations.updatedAt} onRefresh={operations.refresh} selection={activeSelection} onSelect={select} /></div>
+        </aside>
       </section>
       <footer className="bottom-hud">
         <div className="footer-block"><span>WORKERS</span><strong>{workers.length} REGISTERED</strong></div>

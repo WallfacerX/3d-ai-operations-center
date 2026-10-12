@@ -20,7 +20,7 @@ export default function TaskReviewPanel({ task, online, refreshKey, onRefresh })
     {review.error && <p className="review-error" role="alert">{review.error}</p>}
     {!online && <p>Backend offline. Review controls are unavailable.</p>}
     {!review.loaded && !review.error && <p>Loading result…</p>}
-    {review.loaded && !result && <p>No persisted result available. Submit a result before reviewing this task.</p>}
+    {review.loaded && !result && <p>No persisted result available.{status === 'awaiting_review' ? ' Submit a result before reviewing this task.' : ''}</p>}
     {result && <>
       <p>Result version {result.version}{version !== undefined ? ' · history' : ''}</p>
       <dl className="details">

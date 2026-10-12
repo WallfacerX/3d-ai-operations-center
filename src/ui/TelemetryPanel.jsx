@@ -1,4 +1,7 @@
 import { useState } from 'react'
+import useOperatorAction from '../hooks/useOperatorAction.js'
+import TaskActions from './TaskActions.jsx'
+import { ResultForm } from './OperatorForms.jsx'
 import TaskReviewPanel from './TaskReviewPanel.jsx'
 import { departments, getDepartment } from '../data/facility.js'
 
@@ -7,8 +10,10 @@ function Metric({ label, value }) {
 }
 const statusLabel = (status) => status.replaceAll('_', ' ')
 
-export default function TelemetryPanel({ workers, tasks, activity, connection, selection, onSelect, refreshKey, onRefresh }) {
+export default function TelemetryPanel({ workers, tasks, pendingTask, activity, connection, selection, onSelect, refreshKey, onRefresh }) {
   const [historySelection, setHistorySelection] = useState(null)
+  const action = useOperatorAction(connection === 'connected', onRefresh)
+  const selectedTask = selection.type === 'task' ? tasks.find((task) => task.id === selection.id) ?? (pendingTask?.id === selection.id ? pendingTask : null) : null
   const bot = selection.type === 'bot' ? workers.find(({ id }) => id === selection.id) : null
   const department = !bot ? getDepartment(selection.id) ?? getDepartment('operations') : null
   const history = bot ? tasks.filter((task) => task.assignedWorkerId === bot.id && ['completed', 'cancelled'].includes(task.status)).sort((a, b) => b.id - a.id) : []
@@ -19,7 +24,14 @@ export default function TelemetryPanel({ workers, tasks, activity, connection, s
   const selectWorker = (worker) => onSelect({ type: 'bot', id: worker.id })
   return (
     <aside className="telemetry-panel" aria-label="Operations telemetry">
-      <section className="side-section inspector">
+      {selectedTask && <section className="side-section inspector"><div className="side-heading">SELECTED TASK #{selectedTask.id}</div><h1>{selectedTask.title}</h1><p>{selectedTask.description || 'No description provided'}</p><p>Requirements: {selectedTask.requirements || 'None specified'}</p><p>{selectedTask.status.replaceAll('_', ' ')} · {selectedTask.progress}%</p>
+        {selectedTask.status === 'revision_requested' && <p>Revision note: {selectedTask.latestRevision?.notes ?? 'No note available'}</p>}
+        {action.error && <p role="alert" className="review-error">{action.error}</p>}
+        <TaskActions key={`actions-${selectedTask.id}`} task={selectedTask} workers={workers} tasks={tasks} action={action} />
+        {selectedTask.status === 'working' && <ResultForm key={`result-${selectedTask.id}`} task={selectedTask} action={action} />}
+        {(selectedTask.latestResult || ['awaiting_review', 'revision_requested', 'completed', 'cancelled'].includes(selectedTask.status)) && <TaskReviewPanel key={`review-${selectedTask.id}`} task={selectedTask} online={connection === 'connected'} refreshKey={refreshKey} onRefresh={onRefresh} />}
+      </section>}
+      <section className="side-section inspector" hidden={!!selectedTask}>
         <div className="side-heading"><span>{bot ? 'SELECTED WORKER' : 'SELECTED DEPARTMENT'}</span><span>{bot ? `#${bot.id}` : department.code}</span></div>
         <h1>{bot?.name ?? department.name}</h1>
         {bot ? <>
@@ -39,7 +51,7 @@ export default function TelemetryPanel({ workers, tasks, activity, connection, s
             </>}
           </dl>
           {bot.task && <><label className="progress-label" htmlFor="task-progress">Task progress <strong>{bot.task.progress}%</strong></label><progress id="task-progress" max="100" value={bot.task.progress} /></>}
-          <p>State and progress are updated manually through the local API.</p>
+          <p>Work is controlled manually from Operations. No AI execution is running.</p>
         </> : <>
           <div className="selected-status">{working.some((worker) => worker.destination === department.id) ? 'PROCESSING' : 'READY'}</div>
           <p>{department.description}</p>
@@ -54,7 +66,7 @@ export default function TelemetryPanel({ workers, tasks, activity, connection, s
         </>}
       </section>
       {bot && !bot.task && history.length > 0 && <section className="side-section"><div className="side-heading">RECENT TASKS · NOT ACTIVE</div>{history.slice(0, 10).map((task) => <button className="associated-worker" type="button" key={task.id} onClick={() => setHistorySelection({ workerId: bot.id, taskId: task.id })}>{task.title} · {task.status}</button>)}</section>}
-      {bot && reviewTask && <TaskReviewPanel key={reviewTask.id} task={reviewTask} online={connection === 'connected'} refreshKey={refreshKey} onRefresh={onRefresh} />}
+      {!selectedTask && bot && reviewTask && <TaskReviewPanel key={reviewTask.id} task={reviewTask} online={connection === 'connected'} refreshKey={refreshKey} onRefresh={onRefresh} />}
       <section className="side-section">
         <div className="side-heading"><span>WORKFORCE</span><span>{working.length} / {workers.length} WORKING</span></div>
         {workers.length === 0 && <p>{connection === 'loading' ? 'Loading workers…' : connection !== 'connected' ? 'Worker data unavailable. Start the backend with npm run server.' : 'No workers registered.'}</p>}

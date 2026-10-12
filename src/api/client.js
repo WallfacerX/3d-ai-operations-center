@@ -3,14 +3,17 @@ const taskStates = new Set(['draft', 'queued', 'assigned', 'traveling', 'working
 const id = (value) => Number.isSafeInteger(value) && value > 0
 const nullableId = (value) => value === null || id(value)
 const text = (value) => typeof value === 'string'
+const resultSummary = (r) => r == null || (id(r.id) && id(r.version) && text(r.summary))
+const revisionSummary = (r) => r == null || (id(r.id) && text(r.notes) && timestamp(r.createdAt))
 const timestamp = (value) => text(value) && Number.isFinite(Date.parse(value))
 
 export class InvalidResponse extends Error {}
 
 export function validateRecords(kind, data) {
   const validators = {
+    projects: (r) => id(r.id) && ['name', 'client', 'description', 'status'].every((key) => text(r[key])),
     workers: (r) => id(r.id) && ['name', 'role', 'department'].every((key) => text(r[key])) && workerStates.has(r.status) && nullableId(r.currentTaskId),
-    tasks: (r) => id(r.id) && id(r.projectId) && ['title', 'description', 'requirements', 'type'].every((key) => text(r[key])) && nullableId(r.assignedWorkerId) && taskStates.has(r.status) && typeof r.progress === 'number' && Number.isFinite(r.progress) && r.progress >= 0 && r.progress <= 100,
+    tasks: (r) => id(r.id) && id(r.projectId) && ['title', 'description', 'requirements', 'type'].every((key) => text(r[key])) && nullableId(r.assignedWorkerId) && taskStates.has(r.status) && typeof r.progress === 'number' && Number.isFinite(r.progress) && r.progress >= 0 && r.progress <= 100 && resultSummary(r.latestResult) && revisionSummary(r.latestRevision),
     activity: (r) => id(r.id) && ['projectId', 'taskId', 'workerId'].every((key) => nullableId(r[key])) && text(r.event) && text(r.message) && timestamp(r.timestamp),
   }
   if (!Array.isArray(data) || !data.every((record) => record && validators[kind](record)) || new Set(data.map((record) => record.id)).size !== data.length) {
@@ -20,7 +23,7 @@ export function validateRecords(kind, data) {
 }
 
 export async function fetchOperations(signal, fetcher = fetch) {
-  const kinds = ['workers', 'tasks', 'activity']
+  const kinds = ['workers', 'tasks', 'activity', 'projects']
   const results = await Promise.all(kinds.map(async (kind) => {
     const response = await fetcher(`/api/${kind}`, { signal, cache: 'no-store' })
     if (!response.ok) throw new Error(`Request failed (${response.status})`)
@@ -70,3 +73,21 @@ async function reviewTask(taskId, action, resultId, notes, fetcher) {
 export const approveTask = (taskId, resultId, notes = '', fetcher = fetch) => reviewTask(taskId, 'approve', resultId, notes, fetcher)
 export const reviseTask = (taskId, resultId, notes, fetcher = fetch) => reviewTask(taskId, 'revise', resultId, notes, fetcher)
 export const rejectTask = (taskId, resultId, notes = '', fetcher = fetch) => reviewTask(taskId, 'reject', resultId, notes, fetcher)
+
+export async function createProject(body, fetcher = fetch) {
+  const data = await reviewRequest('/projects', { method: 'POST', body }, fetcher)
+  validateRecords('projects', [data])
+  return data
+}
+export async function createTask(body, fetcher = fetch) {
+  const data = await reviewRequest('/tasks', { method: 'POST', body }, fetcher)
+  validateRecords('tasks', [data])
+  return data
+}
+export async function taskAction(taskId, action, workerId, fetcher = fetch) {
+  if (!['assign', 'start', 'begin-work', 'resume', 'cancel'].includes(action)) throw new Error('Unknown task action')
+  const data = await reviewRequest(`/tasks/${taskId}/${action}`, { method: 'POST', body: action === 'assign' ? { workerId } : {} }, fetcher)
+  validateRecords('tasks', [data.task])
+  if (data.worker !== null) validateRecords('workers', [data.worker])
+  return data
+}

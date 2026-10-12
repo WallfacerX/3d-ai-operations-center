@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { startPolling } from '../api/polling.js'
 
 export default function useOperations() {
-  const [snapshot, setSnapshot] = useState({ status: 'loading', data: { workers: [], tasks: [], activity: [] }, updatedAt: null })
+  const [snapshot, setSnapshot] = useState({ status: 'loading', data: { workers: [], tasks: [], activity: [], projects: [] }, updatedAt: null })
   const polling = useRef(null)
   useEffect(() => {
     polling.current = startPolling((update) => setSnapshot((previous) => ({ ...previous, ...update })))

@@ -42,9 +42,28 @@ curl http://localhost:5173/api/health
 
 Use `curl.exe` instead of `curl` if your PowerShell installation aliases it to another command.
 
+## Operator Console
+
+**Task orchestration is functional. Actual AI task execution is not implemented yet.**
+
+The right-hand HUD has Operations and Inspector tabs. The 3D facility remains visible and navigable. No terminal demo command is needed for the normal workflow:
+
+1. In Operations, expand **New project**. Enter name and client (required by the existing database), optional description, and status (defaults to `active`). Creation selects the new project; existing project rows also select it.
+2. Enter a task title and type (`research` by default), plus your own description and requirements. **Create draft task** saves an unassigned task and opens its inspector.
+3. Select an available worker and choose **Assign worker**. Availability requires idle status, no current task, and no other nonterminal assignment.
+4. Choose **Start task** to begin travel. Watch the bot move, then choose **Begin work**. Arrival alone never changes persisted state or executes work.
+5. Active Work lists nonterminal tasks with project, worker, status, and progress. Select an entry to inspect it. Progress is stored task progress, not a timer or distance measurement.
+6. While working, expand **Enter manual result**, enter the result of manual work, and **Submit for review**. Summary is required; other narrative fields and source rows are optional. No result is generated for you.
+7. Review Queue displays the saved summary/version. **Review** opens the existing Approve / Request revision / Reject controls.
+8. A revision request retains the worker and displays the human note. **Resume task** returns to working with progress zero; submit a new result version when ready. History is preserved.
+
+Cancellation uses an inline confirmation and releases only the task's linked worker. Pending review must be rejected through the review controls instead. Completed/cancelled tasks stay visible when selected; existing worker history remains accessible. Project/task editing, reassignment, reporting, and automatic execution are outside this milestone.
+
+Forms retain drafts across Operations/Inspector tab switches and failed requests. Offline state disables writes while retaining the last valid data. Writes are never retried automatically; a timeout may mean a write committed before its response was lost, so inspect refreshed state before retrying.
+
 ## Backend-driven 3D workers
 
-The frontend requests `/api/workers`, `/api/tasks`, and `/api/activity` together on load, then three seconds after each batch finishes. Requests time out after five seconds. A single scheduler avoids overlapping polls, pauses while the tab is hidden, and cancels requests on unmount. No requests run in the animation loop.
+The frontend requests `/api/workers`, `/api/tasks`, `/api/activity`, and `/api/projects` together on load, then three seconds after each batch finishes. Requests time out after five seconds. A single scheduler avoids overlapping polls, pauses while the tab is hidden, and cancels requests on unmount. No requests run in the animation loop.
 
 The HUD shows connection status and the last successful refresh. On a failed or malformed response, the scene keeps the last valid data, marks it stale, and freezes movement/work animation until reconnection. With no successful response, rooms still render and the workforce stays empty. There is no fallback to invented workers or tasks.
 
@@ -63,7 +82,7 @@ Existing department definitions remain the source of scene positions and colors.
 
 Travel is presentation-only: arrival never changes backend state or task progress. A worker can visually arrive while the API still reports `traveling`. Reloading during travel starts its visual trip at staging because location is not persisted. Repeated polls do not restart a trip. Idle transitions return to staging. Department counts describe affiliation and reported status, not authoritative physical location.
 
-## Manual research demonstration
+## Optional scripted research demonstration
 
 With both servers running, open the frontend and select Research Bot 01 from the scene or workforce list. In a third terminal:
 
@@ -76,11 +95,11 @@ npm run demo -- working
 npm run demo -- result
 ```
 
-Run these commands **one at a time**, allowing about three seconds for each poll; after `traveling`, allow another 3–4 seconds to observe the trip from Management to Research. `working` sets illustrative task progress to 40%; `result` saves a clearly labeled sample structured result and atomically sets the task to 100% and `awaiting_review`, with its linked worker awaiting review. `review` remains an alias for `result`. These are manual demonstration inputs, not researched facts or AI output. Inspect the result in the HUD and choose Approve, Request revision (with a note), or Reject.
+Run these commands **one at a time**, allowing about three seconds for each poll; after `traveling`, allow another 3–4 seconds to observe the trip from Management to Research. `working` enters manual work without inventing progress; `result` saves a clearly labeled sample structured result and atomically sets the task to 100% and `awaiting_review`, with its linked worker awaiting review. `review` remains an alias for `result`. These are manual demonstration inputs, not researched facts or AI output. Inspect the result in the HUD and choose Approve, Request revision (with a note), or Reject.
 
-`setup` discovers the seeded project/worker and creates or reuses one named research task. Repeating it does not duplicate tasks or advance worker state. `idle` clears the worker's current-task link and resets the demo task to draft/zero progress; it does not erase activity history or the original start timestamp. It is allowed only before review. Pending and terminal reviews cannot be reset this way. After approval or rejection, use `npm run demo -- new`, then repeat `assigned`, `traveling`, `working`, and `result`. After a revision request, run `working` and `result` to submit a new version. Existing results and decisions remain available in Decision history; repeated `result` while pending does not create duplicates.
+`setup` discovers the seeded project/worker and creates or reuses one named research task. Repeating it does not duplicate tasks or advance worker state. `idle` checks that the demo task is still draft and the worker is unassigned; it does not reset active work. Pending and terminal reviews cannot be reset this way. After approval or rejection, use `npm run demo -- new`, then repeat `assigned`, `traveling`, `working`, and `result`. After a revision request, run `working` and `result` to submit a new version. Existing results and decisions remain available in Decision history; repeated `result` while pending does not create duplicates.
 
-The script only calls fixed endpoints on `127.0.0.1:3001`. It refuses to replace unrelated assignments. Since task and worker PATCH requests are separate transactions, a failed command may leave earlier successful changes saved; inspect the HUD/API before retrying. No background executor runs.
+The script only calls fixed endpoints on `127.0.0.1:3001`. It refuses to replace unrelated assignments. Assignment and work transitions use the same atomic operator endpoints as the UI. Each command commits separately; inspect the HUD/API before retrying a failed command. No background executor runs.
 
 To check offline recovery, stop the backend with Ctrl+C. The scene should show Backend Offline with stale data; restart `npm run server` and allow the next poll to reconnect.
 
@@ -113,7 +132,12 @@ All responses are JSON. Collection endpoints return arrays; item endpoints retur
 | GET, POST | `/api/projects` | List or create projects |
 | GET | `/api/projects/:id` | Read a project |
 | GET, POST | `/api/tasks` | List or create tasks |
-| GET, PATCH | `/api/tasks/:id` | Read or manually update a task |
+| GET, PATCH | `/api/tasks/:id` | Read task/queue summaries or apply validated compatibility updates |
+| POST | `/api/tasks/:id/assign` | Assign with `{ "workerId": 1 }` |
+| POST | `/api/tasks/:id/start` | Assigned → traveling |
+| POST | `/api/tasks/:id/begin-work` | Traveling → working |
+| POST | `/api/tasks/:id/resume` | Revision requested → working |
+| POST | `/api/tasks/:id/cancel` | Cancel pre-review work and release linked worker |
 | GET | `/api/workers` | List workers |
 | GET, PATCH | `/api/workers/:id` | Read or manually update a worker |
 | GET | `/api/activity` | Read the latest 100 events, newest first |
@@ -126,7 +150,7 @@ All responses are JSON. Collection endpoints return arrays; item endpoints retur
 
 Projects require nonblank `name` and `client`. Optional `description` defaults to empty text; `status` defaults to `active` and is a nonblank string.
 
-Tasks require `projectId`, `title`, and `type`. Optional `description` and `requirements` are plain text; `assignedWorkerId` defaults to null, `status` to `draft`, and `progress` to zero. Project and assigned-worker references must exist. Task type is a nonblank string, such as `research`.
+Tasks require `projectId`, `title`, and `type`. Optional `description` and `requirements` are plain text; `assignedWorkerId` defaults to null, `status` to `draft`, and `progress` to zero. Project and assigned-worker references must exist. Task type is a nonblank string, such as `research`. Creation only accepts unassigned draft/queued tasks; use Assign afterward. Task reads add nullable `latestResult` (`id`, `version`, `summary`) and `latestRevision` (`id`, `notes`, `createdAt`) summaries for queues. No per-task HTTP polling is needed.
 
 ```sh
 curl -X POST http://127.0.0.1:3001/api/projects \
@@ -136,24 +160,23 @@ curl -X POST http://127.0.0.1:3001/api/projects \
 # Replace projectId with the ID returned above; worker 1 exists in a fresh database.
 curl -X POST http://127.0.0.1:3001/api/tasks \
   -H 'Content-Type: application/json' \
-  -d '{"projectId":2,"title":"Review local architecture","type":"research","requirements":"Document tradeoffs","assignedWorkerId":1,"status":"queued"}'
+  -d '{"projectId":2,"title":"Review local architecture","type":"research","requirements":"Document tradeoffs","status":"queued"}'
 
 curl http://127.0.0.1:3001/api/tasks
 curl http://127.0.0.1:3001/api/workers
 curl http://127.0.0.1:3001/api/activity
 ```
 
-Task PATCH accepts only `status`, `progress`, and `assignedWorkerId`. Worker PATCH accepts only `status` and `currentTaskId`. Use IDs returned by the API:
+Operator action POSTs accept an empty JSON object except Assign, which accepts only `workerId`. They return `{ "task": { ... }, "worker": { ... } }` (worker may be null). Start requires assigned task/worker, Begin Work requires traveling, and Resume requires revision_requested with its retained assigned worker. Cancel accepts draft, queued, assigned, traveling, working, or revision_requested; repeated/invalid transitions return `409`. Every action commits task, worker, and activity together.
 
 ```sh
-curl -X PATCH http://127.0.0.1:3001/api/tasks/1 \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"working","progress":25}'
-
-curl -X PATCH http://127.0.0.1:3001/api/workers/1 \
-  -H 'Content-Type: application/json' \
-  -d '{"status":"working","currentTaskId":1}'
+# Replace 1 with IDs returned by your local API.
+curl -X POST http://127.0.0.1:3001/api/tasks/1/assign -H 'Content-Type: application/json' -d '{"workerId":1}'
+curl -X POST http://127.0.0.1:3001/api/tasks/1/start -H 'Content-Type: application/json' -d '{}'
+curl -X POST http://127.0.0.1:3001/api/tasks/1/begin-work -H 'Content-Type: application/json' -d '{}'
 ```
+
+**Compatibility change:** task PATCH still has a strict allowlist, but no longer permits arbitrary lifecycle jumps. A single assignedWorkerId update delegates to Assign; traveling/working/cancelled status updates delegate to Start/Begin Work (or Resume)/Cancel. Mixed workflow updates are rejected. Progress alone may be updated only while working. Worker PATCH only permits idle/error state and a null task link on unlinked workers; use task actions for assignment and linked state. Old demo commands have been updated accordingly. Existing database records are preserved; inconsistent legacy assignments produce clear conflicts rather than silent repair.
 
 Supported task states:
 
@@ -188,7 +211,7 @@ Approval and completion occur in one transaction; both activities are recorded, 
 
 The selected bot HUD loads its result and decision history after successful operations polls, supports viewing previous versions, and keeps completed/cancelled tasks available under Recent tasks. Controls disable while offline, saving, loading, or viewing history. Successful decisions trigger an immediate data refresh; failed writes are never automatically retried. Notes are stored in approval records; activity messages omit notes and raw output.
 
-A worker's current task must be assigned to that worker. Clear `currentTaskId` with null before reassigning/unassigning an active task. Task assignment, worker state, and worker current-task changes remain explicit API operations. Repeating unchanged values produces no duplicate activity.
+A worker's current task must be assigned to that worker. Operator actions maintain both sides of this relationship atomically. Repeated decisions/transitions are rejected; unchanged progress updates do not duplicate activity.
 
 Writes and their activity records commit together. Invalid input returns `400`; missing item IDs return `404`; assignment conflicts return `409`; nonlocal hosts/origins return `403`; bodies over 64 KB return `413`. Unexpected errors return `500` with a generic message, never a stack trace. Errors use `{ "error": "message" }`.
 
@@ -198,6 +221,9 @@ Validation rejects unknown fields, client-supplied IDs/timestamps, invalid refer
 
 - `src/api/`: validated API reads/writes and polling lifecycle.
 - `src/hooks/useOperations.js`: React subscription to the polling snapshot.
+- `src/ui/OperationsPanel.jsx`, `OperatorForms.jsx`, and `TaskActions.jsx`: compact operator UI, manual result entry, and explicit task actions.
+- `src/hooks/useOperatorAction.js`: write locking, inline errors, and refresh.
+- `src/data/operatorState.js`: pure action/availability helpers.
 - `src/hooks/useTaskReview.js` and `src/ui/TaskReviewPanel.jsx`: cancellable result/history reads, explicit review writes, and HUD controls.
 - `src/data/workerScene.js`: backend-to-scene adapter; `src/scene/workerMotion.js`: reusable routing and visual motion.
 - `src/scene/` and `src/ui/`: existing facility rendering and backend-driven inspector. The previous simulation engine remains tested but is disconnected from the active application.
@@ -205,6 +231,7 @@ Validation rejects unknown fields, client-supplied IDs/timestamps, invalid refer
 - `server/index.js`: loopback listener and shutdown; `server/app.js`: Express setup and error handling.
 - `server/api/`: small route modules with prepared SQL and transactional writes.
 - `server/db/`: SQLite initialization, schema, versioned migrations, seeds, and activity insertion.
+- `server/services/operations.js`: atomic task actions and queue projections.
 - `server/services/review.js`: transactional result submission and human decision rules.
 - `server/validation.js`: input validation and supported states.
 - `server/backend.test.js` and `server/review.test.js`: isolated HTTP/database integration tests.
@@ -224,6 +251,6 @@ Tests create temporary databases and temporary loopback HTTP servers; they do no
 
 This is a local-only prototype with no authentication, authorization, worker execution, verified reviewer identities, or external integrations. The API contains no shell/command execution or filesystem-browsing endpoints, makes no outbound service requests, and includes no analytics or credentials. Local processes with access to the API can modify records; loopback binding is not authentication.
 
-Project/task lists are unpaginated; activity reads are limited to 100 while history remains stored. Synchronous SQLite operations are appropriate for this small local foundation, not high-concurrency deployment. Visual positions are local to each browser and are not synchronized or persisted. Changes between polling snapshots can be missed; there is no event streaming. Task and worker state remain separately editable, so the HUD displays both rather than silently resolving inconsistent statuses.
+Project/task lists are unpaginated; activity reads are limited to 100 while history remains stored. Synchronous SQLite operations are appropriate for this small local foundation, not high-concurrency deployment. Visual positions are local to each browser and are not synchronized or persisted. Changes between polling snapshots can be missed; there is no event streaming. Legacy inconsistent task/worker associations remain visible and cause action conflicts; there is no automatic repair or reassignment UI.
 
-A suggested next milestone is a small task authoring/review queue, clearer assignment controls, and reviewer identity requirements before any AI integration. It is not implemented here. Results remain manual/sample data; no AI provider is configured. Contributions should stay small, include relevant tests, and preserve the existing frontend.
+A suggested next milestone is scoped task editing/reassignment with audit history and recovery controls for legacy inconsistent assignments, plus a decision on reviewer identity before any AI integration. It is not implemented here. Results remain manual/sample data; no AI provider is configured. Contributions should stay small, include relevant tests, and preserve the existing frontend.
